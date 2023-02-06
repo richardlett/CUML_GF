@@ -101,6 +101,17 @@ cdef extern from "cuml/cluster/hdbscan.hpp" namespace "ML":
                  HDBSCANParams & params,
                  hdbscan_output & output)
 
+
+    void hdbscan_GF(const handle_t& handle,
+                const float * X1,
+                const float * X2,
+                size_t m,
+                size_t n1,
+                size_t n2,
+                DistanceType metric,
+                HDBSCANParams & params,
+                hdbscan_output & out)
+
     void hdbscan(const handle_t & handle,
                  const float* X,
                  size_t m, size_t n,
@@ -591,7 +602,6 @@ class HDBSCAN(Base, ClusterMixin, CMajorInputTagMixin):
             <size_t>hdbscan_output_.get_condensed_tree().get_sizes(),
             n_condensed_tree_edges)
 
-    @generate_docstring()
     def fit(self, X, y=None, convert_dtype=True) -> "HDBSCAN":
         """
         Fit HDBSCAN model from features.
@@ -711,16 +721,135 @@ class HDBSCAN(Base, ClusterMixin, CMajorInputTagMixin):
 
         return self
 
-    @generate_docstring(return_values={'name': 'preds',
-                                       'type': 'dense',
-                                       'description': 'Cluster indexes',
-                                       'shape': '(n_samples, 1)'})
+    def fit_GF(self, X1, X2, y=None, convert_dtype=True) -> "HDBSCAN":
+            """
+            Fit HDBSCAN model from features.
+            """
+
+            X_m, n_rows, n_cols, self.dtype = \
+                input_to_cuml_array(X1, order='C',
+                                    check_dtype=[np.float32],
+                                    convert_to_dtype=(np.float32
+                                                    if convert_dtype
+                                                    else None))
+
+            X_m2, n_rows, n_cols2, self.dtype = \
+                input_to_cuml_array(X2, order='C',
+                                    check_dtype=[np.float32],
+                                    convert_to_dtype=(np.float32
+                                                    if convert_dtype
+                                                    else None))
+
+
+
+            if self.prediction_data:
+                self.X_m = X_m
+                self.n_rows = n_rows
+                self.n_cols = n_cols
+
+            cdef uintptr_t input_ptr = X_m.ptr
+            cdef uintptr_t input_ptr2 = X_m2.ptr
+
+            cdef handle_t* handle_ = <handle_t*><size_t>self.handle.getHandle()
+
+            # Hardcode n_components_ to 1 for single linkage. This will
+            # not be the case for other linkage types.
+            self.n_connected_components_ = 1
+            self.n_leaves_ = n_rows
+
+            self.labels_ = CumlArray.empty(n_rows, dtype="int32", index=X_m.index)
+            self.children_ = CumlArray.empty((2, n_rows), dtype="int32")
+            self.probabilities_ = CumlArray.empty(n_rows, dtype="float32")
+            self.sizes_ = CumlArray.empty(n_rows, dtype="int32")
+            self.lambdas_ = CumlArray.empty(n_rows, dtype="float32")
+            self.mst_src_ = CumlArray.empty(n_rows-1, dtype="int32")
+            self.mst_dst_ = CumlArray.empty(n_rows-1, dtype="int32")
+            self.mst_weights_ = CumlArray.empty(n_rows-1, dtype="float32")
+
+            cdef uintptr_t labels_ptr = self.labels_.ptr
+            cdef uintptr_t children_ptr = self.children_.ptr
+            cdef uintptr_t sizes_ptr = self.sizes_.ptr
+            cdef uintptr_t lambdas_ptr = self.lambdas_.ptr
+            cdef uintptr_t probabilities_ptr = self.probabilities_.ptr
+            cdef uintptr_t mst_src_ptr = self.mst_src_.ptr
+            cdef uintptr_t mst_dst_ptr = self.mst_dst_.ptr
+            cdef uintptr_t mst_weights_ptr = self.mst_weights_.ptr
+
+            # If calling fit a second time, release
+            # any memory owned from previous trainings
+            delete_hdbscan_output(self)
+
+            cdef hdbscan_output *linkage_output = new hdbscan_output(
+                handle_[0], n_rows,
+                <int*>labels_ptr,
+                <float*>probabilities_ptr,
+                <int*>children_ptr,
+                <int*>sizes_ptr,
+                <float*>lambdas_ptr,
+                <int*>mst_src_ptr,
+                <int*>mst_dst_ptr,
+                <float*>mst_weights_ptr)
+            self.hdbscan_output_ = <size_t>linkage_output
+            cdef HDBSCANParams params
+            params.min_samples = self.min_samples
+            # params.alpha = self.alpha
+            params.min_cluster_size = self.min_cluster_size
+            params.max_cluster_size = self.max_cluster_size
+            params.cluster_selection_epsilon = self.cluster_selection_epsilon
+            params.allow_single_cluster = self.allow_single_cluster
+            if self.cluster_selection_method == 'eom':
+                params.cluster_selection_method = CLUSTER_SELECTION_METHOD.EOM
+            elif self.cluster_selection_method == 'leaf':
+                params.cluster_selection_method = CLUSTER_SELECTION_METHOD.LEAF
+            else:
+                raise ValueError("Cluster selection method not supported. "
+                                "Must one of {'eom', 'leaf'}")
+            cdef DistanceType metric
+            if self.metric in _metrics_mapping:
+                metric = _metrics_mapping[self.metric]
+            else:
+                raise ValueError("'affinity' %s not supported." % self.affinity)
+            cdef PredictionData[int, float] *prediction_data_ = new PredictionData(
+                handle_[0], <int> n_rows, <int> n_cols)
+            if self.connectivity == 'knn':
+                if self.prediction_data:
+                    self.prediction_data_ptr = <size_t>prediction_data_
+                    hdbscan(handle_[0],
+                            <float*>input_ptr,
+                            <int> n_rows,
+                            <int> n_cols,
+                            <DistanceType> metric,
+                            params,
+                            deref(linkage_output),
+                            deref(prediction_data_))
+                else:
+                    hdbscan_GF(handle_[0],
+                            <float*>input_ptr,
+                            <float*>input_ptr2,
+                            <int> n_rows,
+                            <int> n_cols,
+                            <int> n_cols2,
+                            <DistanceType> metric,
+                            params,
+                            deref(linkage_output))
+            else:
+                raise ValueError("'connectivity' can only be one of "
+                                "{'knn', 'pairwise'}")
+            self.handle.sync()
+            self.fit_called_ = True
+            self._construct_output_attributes()
+            self.build_minimum_spanning_tree(X_m)
+            return self
+    
     def fit_predict(self, X, y=None) -> CumlArray:
         """
         Fit the HDBSCAN model from features and return
         cluster labels.
         """
         return self.fit(X).labels_
+    def fit_predict_GF(self, X1,X2, y=None) -> CumlArray:
+
+        return self.fit_GF(X1,X2).labels_
 
     def _extract_clusters(self, condensed_tree):
         parents, n_edges, _, _ = \

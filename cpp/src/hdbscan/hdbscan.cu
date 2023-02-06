@@ -40,6 +40,25 @@ void hdbscan(const raft::handle_t& handle,
   HDBSCAN::_fit_hdbscan(
     handle, X, m, n, metric, params, labels.data(), label_map.data(), core_dists.data(), out);
 }
+#include <stdio.h>
+
+void hdbscan_GF(const raft::handle_t& handle,
+             const float* X1,
+             const float* X2,
+             size_t m,
+             size_t n1,
+              size_t n2,
+             raft::distance::DistanceType metric,
+             HDBSCAN::Common::HDBSCANParams& params,
+             HDBSCAN::Common::hdbscan_output<int, float>& out)
+{
+  rmm::device_uvector<int> labels(m, handle.get_stream());
+  rmm::device_uvector<int> label_map(m, handle.get_stream());
+  rmm::device_uvector<float> core_dists(m, handle.get_stream());
+  std::cout << "n1 " << n1 << " n2:" << n2 << std::endl;
+  HDBSCAN::_fit_hdbscan_GF(
+    handle, X1, X2, m, n1, n2, metric, params, labels.data(), label_map.data(), core_dists.data(), out);
+}
 
 void hdbscan(const raft::handle_t& handle,
              const float* X,

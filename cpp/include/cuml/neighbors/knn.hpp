@@ -61,6 +61,23 @@ void brute_force_knn(const raft::handle_t& handle,
                      raft::distance::DistanceType metric = raft::distance::DistanceType::L2Expanded,
                      float metric_arg                    = 2.0f);
 
+void brute_force_knn_GF(const raft::handle_t& handle,
+                     std::vector<float*>& input1,
+                     std::vector<float*>& input2,
+                     std::vector<int>& sizes,
+                     int D1,
+                     int D2,
+                     float* search_items1,
+                     float* search_items2,
+                     int n,
+                     int64_t* res_I,
+                     float* res_D,
+                     int k,
+                     bool rowMajorIndex  = false,
+                     bool rowMajorQuery   = false,
+                     raft::distance::DistanceType metric = raft::distance::DistanceType::L2Expanded,
+                     float metric_arg= 2.0f);
+
 void rbc_build_index(const raft::handle_t& handle,
                      raft::spatial::knn::BallCoverIndex<int64_t, float, uint32_t>& index);
 

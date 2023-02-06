@@ -421,6 +421,17 @@ void hdbscan(const raft::handle_t& handle,
              HDBSCAN::Common::HDBSCANParams& params,
              HDBSCAN::Common::hdbscan_output<int, float>& out);
 
+
+void hdbscan_GF(const raft::handle_t& handle,
+             const float* X1,
+             const float* X2,
+             size_t m,
+             size_t n1,
+              size_t n2,
+             raft::distance::DistanceType metric,
+             HDBSCAN::Common::HDBSCANParams& params,
+             HDBSCAN::Common::hdbscan_output<int, float>& out);
+
 /**
  * Executes HDBSCAN clustering on an mxn-dimensional input array, X, then builds the PredictionData
  * object which computes and stores information needed later for prediction algorithms.

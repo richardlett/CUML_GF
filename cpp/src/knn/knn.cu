@@ -35,6 +35,46 @@
 
 namespace ML {
 
+
+void brute_force_knn_GF(const raft::handle_t& handle,
+                     std::vector<float*>& input1,
+                     std::vector<float*>& input2,
+                     std::vector<int>& sizes,
+                     int D1,
+                     int D2,
+                     float* search_items1,
+                     float* search_items2,
+                     int n,
+                     int64_t* res_I,
+                     float* res_D,
+                     int k,
+                     bool rowMajorIndex,
+                     bool rowMajorQuery,
+                     raft::distance::DistanceType metric,
+                     float metric_arg)
+{
+  ASSERT(input1.size() == sizes.size(), "input and sizes vectors must be the same size");
+  ASSERT(input2.size() == sizes.size(), "input and sizes vectors must be the same size");
+
+  raft::spatial::knn::brute_force_knn_GF<int64_t, float, int>(handle,
+                                                           input1,
+                                                           input2,
+                                                           sizes,
+                                                           D1,
+                                                           D2,
+                                                           search_items1,
+                                                           search_items2,
+                                                           n,
+                                                           res_I,
+                                                           res_D,
+                                                           k,
+                                                           rowMajorIndex,
+                                                           rowMajorQuery,
+                                                           nullptr,
+                                                           metric,
+                                                           metric_arg);
+}
+
 void brute_force_knn(const raft::handle_t& handle,
                      std::vector<float*>& input,
                      std::vector<int>& sizes,
