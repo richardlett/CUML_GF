@@ -37,6 +37,38 @@
 #include <thrust/transform.h>
 #include <thrust/tuple.h>
 
+#include <chrono>
+
+#define CHECK_CUDA_ERROR(val) check((val), #val, __FILE__, __LINE__)
+template <typename T>
+void check(T err, const char* const func, const char* const file,
+           const int line)
+{
+    if (err != cudaSuccess)
+    {
+        std::cerr << "CUDA Runtime Error at: " << file << ":" << line
+                  << std::endl;
+        std::cerr << cudaGetErrorString(err) << " " << func << std::endl;
+        // We don't exit when we encounter CUDA errors in this example.
+        // std::exit(EXIT_FAILURE);
+    }
+}
+
+#define CHECK_LAST_CUDA_ERROR() checkLast(__FILE__, __LINE__)
+void checkLast(const char* const file, const int line)
+{
+    cudaError_t err{cudaGetLastError()};
+    if (err != cudaSuccess)
+    {
+        std::cerr << "CUDA Runtime Error at: " << file << ":" << line
+                  << std::endl;
+        std::cerr << cudaGetErrorString(err) << std::endl;
+        // We don't exit when we encounter CUDA errors in this example.
+        // std::exit(EXIT_FAILURE);
+    }
+}
+
+
 namespace ML {
 namespace HDBSCAN {
 namespace detail {
@@ -152,33 +184,182 @@ void compute_knn_GF(const raft::handle_t& handle,
 {
   auto stream      = handle.get_stream();
   auto exec_policy = handle.get_thrust_policy();
+  //size_t ps =2;
+  //auto ps = pool.get_pool_size();
+  //std::cout <<"Pool size: " <<  ps << std::endl;
   std::vector<value_t*> inputs1, inputs2;
-  inputs1.push_back(const_cast<value_t*>(X1));
-  inputs2.push_back(const_cast<value_t*>(X2));
+  //size_t per_thread  = m / (ps);
+
+   std::vector<std::vector<value_t*>> inputs1_vec;
+   std::vector<std::vector<value_t*>> inputs2_vec;
+
 
   std::vector<int> sizes;
+
+  
+
+  // for (size_t i = 0; i < ps; i++) {
+  //   inputs1.push_back(const_cast<value_t*>(X1 + i*per_thread));
+  //   inputs2.push_back(const_cast<value_t*>(X2 + i*per_thread));
+
+  //   sizes.push_back(m*per_thread);
+  // }
+
+  // if (ps*per_thread < m ) {
+  //   inputs1.push_back(const_cast<value_t*>(X1 + ps*per_thread));
+  //   inputs2.push_back(const_cast<value_t*>(X2 + ps*per_thread));
+  //   sizes.push_back(m- ps*per_thread );
+  // }
+
+
+  inputs1.push_back(const_cast<value_t*>(X1));
+  inputs2.push_back(const_cast<value_t*>(X2));
   sizes.push_back(m);
+  std::cout << "here1" << std::endl;
+
+  int num_devices = 0;
+  int sentinel_device = 0;
+  std::cout << "here2" << std::endl;
+
+  CHECK_CUDA_ERROR(cudaGetDevice(&sentinel_device));
+  CHECK_CUDA_ERROR(cudaGetDeviceCount(&num_devices));
+  std::cout << "here3" << std::endl;
+
+    std::cout << "here3.5 " << sentinel_device << " num devices " << num_devices << std::endl;
+
+
+  std::vector<value_t*> per_device_x1;
+  std::vector<value_t*> per_device_x2;
+  std::cout << "here4" << std::endl;
+
+
+  for (int i = 0; i < num_devices; i++) {
+    value_t* new_ptr_x1= NULL;
+    value_t* new_ptr_x2 = NULL;
+      std::cout << "here5"  << i << std::endl;
+
+    if (i != sentinel_device) {
+            std::cout << "here6"  << i << std::endl;
+
+      CHECK_CUDA_ERROR(cudaSetDevice(i));
+      CHECK_CUDA_ERROR(cudaMalloc(&new_ptr_x1, m*n1*sizeof(value_t)));
+      CHECK_CUDA_ERROR(cudaMalloc(&new_ptr_x2, m*n2*sizeof(value_t)));
+        std::cout << "here6"  << i << std::endl;
+
+
+      CHECK_CUDA_ERROR(cudaMemcpy(new_ptr_x1, X1, m*n1*sizeof(value_t) ,cudaMemcpyDeviceToDevice));
+      CHECK_CUDA_ERROR(cudaMemcpy(new_ptr_x2, X2, m*n2*sizeof(value_t) ,cudaMemcpyDeviceToDevice));
+
+      per_device_x1.push_back(new_ptr_x1);
+      per_device_x2.push_back(new_ptr_x2);
+      std::cout << "here7"  << i << std::endl;
+
+      std::vector<value_t*> i1, i2;
+      i1.push_back(new_ptr_x1);
+      i2.push_back(new_ptr_x2);
+      inputs1_vec.push_back(i1);
+      inputs2_vec.push_back(i2);
+
+    } else {
+            std::cout << "here9"  << i << std::endl;
+
+      per_device_x1.push_back(const_cast<value_t*>(X1));
+      per_device_x2.push_back(const_cast<value_t*>(X2));
+      std::cout << "here8"  << i << std::endl;
+
+      std::vector<value_t*> i1, i2;
+      i1.push_back(const_cast<value_t*>(X1));
+      i2.push_back(const_cast<value_t*>(X2));
+            std::cout << "here10"  << i << std::endl;
+
+      inputs1_vec.push_back(i1);
+      inputs2_vec.push_back(i2);
+
+    }
+  }
+        std::cout << "here11"   << std::endl;
+
+  CHECK_CUDA_ERROR(cudaSetDevice(sentinel_device));
+      std::cout << "here12" << std::endl;
+
+  rmm::device_uvector<int64_t> int64_indices(k * n_search_items, stream);
+      std::cout << "here13"   << std::endl;
+
+
+  #pragma omp parallel for num_threads(num_devices)
+  for (int i = 0; i < num_devices; i++) {
+          std::cout << "here14"<< std::endl;
+
+
+    std::vector<value_t*> inputs1 = inputs1_vec[i];
+    std::vector<value_t*> inputs2 = inputs2_vec[i];
+          std::cout << "here16"  << i << std::endl;
+
+    CHECK_CUDA_ERROR(cudaSetDevice(i));
+          std::cout << "here15"  << i << std::endl;
+
+
+
+    // devide such that devices equal work as posible + last device has leftover.
+    size_t num_search_items_me = i == (num_devices - 1)? (n_search_items/num_devices) + (n_search_items%num_devices) :  (n_search_items/num_devices);
+    size_t start_pos_idx = (n_search_items/num_devices)*i;
+      std::cout << "here17.5   "  << i << std::endl;
+      std::cout << "here17.6 " << per_device_x1.size () << " " <<  i   << std::endl;
+      std::cout << "here17.7 " << per_device_x2.size() << " "<<  i    << std::endl;
+
+    value_t* search_items_x1_local = per_device_x1[i] + n1*start_pos_idx;
+    value_t* search_items_x2_local = per_device_x2[i] + n2*start_pos_idx;
+      std::cout << "here17"  << i << std::endl;
+
+    if (i!= sentinel_device ) {
+            std::cout << "here18"  << i << std::endl;
+
+          auto h = raft::handle_t(rmm::cuda_stream_per_thread, std::make_shared<rmm::cuda_stream_pool>());    
+          rmm::device_uvector<int64_t> int64_indices_me(k * num_search_items_me, h.get_stream());
+          rmm::device_uvector<value_t> dists_me(k * num_search_items_me, h.get_stream());
+          brute_force_knn_GF(h, inputs1, inputs2, sizes, n1,n2, search_items_x1_local, search_items_x2_local, num_search_items_me, int64_indices_me.data(), dists_me.data(), k, true, true, metric);
+      std::cout<< "here 29 "<< std::endl;
+
+          CHECK_CUDA_ERROR(cudaMemcpy(dists + start_pos_idx*k, dists_me.data(), num_search_items_me*k*sizeof(value_t) ,cudaMemcpyDeviceToDevice));
+                std::cout<< "here21 "<< std::endl;
+
+          CHECK_CUDA_ERROR(cudaMemcpy(int64_indices.data() + start_pos_idx*k, int64_indices_me.data(), num_search_items_me*k*sizeof(int64_t) ,cudaMemcpyDeviceToDevice));
+                std::cout<< "here22  "<< std::endl;
+
+          CHECK_CUDA_ERROR(cudaFree(per_device_x1[i]));
+                std::cout<< "here 23 "<< std::endl;
+
+          
+          CHECK_CUDA_ERROR(cudaFree(per_device_x2[i]));
+    } else {
+      std::cout<< "here20 "<< std::endl;
+      brute_force_knn_GF(handle, inputs1, inputs2, sizes, n1,n2, search_items_x1_local, search_items_x2_local, num_search_items_me, int64_indices.data() +start_pos_idx*k, dists + start_pos_idx*k, k, true, true, metric);
+            std::cout<< "here 19"<< std::endl;
+
+    }
+  }
+
 
   // This is temporary. Once faiss is updated, we should be able to
   // pass value_idx through to knn.
-  rmm::device_uvector<int64_t> int64_indices(k * n_search_items, stream);
 
   // perform knn
-  brute_force_knn_GF(handle,
-                  inputs1,
-                  inputs2,
-                  sizes,
-                  n1,
-                  n2,
-                  const_cast<value_t*>(search_items1),
-                  const_cast<value_t*>(search_items2),
-                  n_search_items,
-                  int64_indices.data(),
-                  dists,
-                  k,
-                  true,
-                  true,
-                  metric);
+  // brute_force_knn_GF(handle,
+  //                 inputs1,
+  //                 inputs2,
+  //                 sizes,
+  //                 n1,
+  //                 n2,
+  //                 const_cast<value_t*>(search_items1),
+  //                 const_cast<value_t*>(search_items2),
+  //                 n_search_items,
+  //                 int64_indices.data(),
+  //                 dists,
+  //                 k,
+  //                 true,
+  //                 true,
+  //                 metric);
+  cudaSetDevice(sentinel_device);
 
   // convert from current knn's 64-bit to 32-bit.
   thrust::transform(exec_policy,
@@ -255,7 +436,7 @@ void mutual_reachability_graph(const raft::handle_t& handle,
   rmm::device_uvector<value_t> dists(min_samples * m, stream);
 
   // perform knn
-  compute_knn(handle, X, inds.data(), dists.data(), m, n, X, m, 64, metric);
+  compute_knn(handle, X, inds.data(), dists.data(), m, n, X, m, min_samples, metric);
 
   // Slice core distances (distances to kth nearest neighbor)
   core_distances<value_idx>(dists.data(), min_samples, min_samples, m, core_dists, stream);
@@ -314,18 +495,33 @@ void mutual_reachability_graph_GF(const raft::handle_t& handle,
 
   auto stream      = handle.get_stream();
   auto exec_policy = handle.get_thrust_policy();
+  min_samples = 64;
 
   rmm::device_uvector<value_idx> coo_rows(min_samples * m, stream);
   rmm::device_uvector<value_idx> inds(min_samples * m, stream);
   rmm::device_uvector<value_t> dists(min_samples * m, stream);
 
+  auto start = std::chrono::high_resolution_clock::now();
+
   // perform knn
   compute_knn_GF(handle, X1,X2, inds.data(), dists.data(), m, n1,n2, X1,X2, m, min_samples, metric);
+  auto stop = std::chrono::high_resolution_clock::now();
+
+
+  typedef std::chrono::duration<float> fsec;
+  fsec fs = stop - start;
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
+
+
+  std::cout << "Initial KNN Time: " << fs.count() << " milliseconds " << std::endl;
+  std::cout << "Initial KNN Time: " << duration.count() << " milliseconds " << std::endl;
+
+
   
   //const value_t* X = X1;
   
   // Slice core distances (distances to kth nearest neighbor)
-  core_distances<value_idx>(dists.data(), min_samples, min_samples, m, core_dists, stream);
+  core_distances<value_idx>(dists.data(), min_samples, 64, m, core_dists, stream);
    
   // /**
   //  * Compute L2 norm
