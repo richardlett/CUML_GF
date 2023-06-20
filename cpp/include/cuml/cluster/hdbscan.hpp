@@ -380,6 +380,9 @@ class PredictionData {
   rmm::device_uvector<value_idx> index_into_children;
 };
 
+
+
+
 template class PredictionData<int, float>;
 
 void build_prediction_data(const raft::handle_t& handle,
@@ -427,7 +430,8 @@ void hdbscan_GF(const raft::handle_t& handle,
              const float* X2,
              size_t m,
              size_t n1,
-              size_t n2,
+             size_t n2,
+             float alpha,
              raft::distance::DistanceType metric,
              HDBSCAN::Common::HDBSCANParams& params,
              HDBSCAN::Common::hdbscan_output<int, float>& out);

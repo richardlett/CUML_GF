@@ -61,7 +61,8 @@ void brute_force_knn(const raft::handle_t& handle,
                      raft::distance::DistanceType metric = raft::distance::DistanceType::L2Expanded,
                      float metric_arg                    = 2.0f);
 
-void brute_force_knn_GF(const raft::handle_t& handle,
+void brute_force_knn_GF(float alpha,
+                     const raft::handle_t& handle,
                      std::vector<float*>& input1,
                      std::vector<float*>& input2,
                      std::vector<int>& sizes,

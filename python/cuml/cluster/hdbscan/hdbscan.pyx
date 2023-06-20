@@ -108,6 +108,7 @@ cdef extern from "cuml/cluster/hdbscan.hpp" namespace "ML":
                 size_t m,
                 size_t n1,
                 size_t n2,
+                float alpha,
                 DistanceType metric,
                 HDBSCANParams & params,
                 hdbscan_output & out)
@@ -721,7 +722,7 @@ class HDBSCAN(Base, ClusterMixin, CMajorInputTagMixin):
 
         return self
 
-    def fit_GF(self, X1, X2, y=None, convert_dtype=True) -> "HDBSCAN":
+    def fit_GF(self, X1, X2, alpha=1.2, y=None, convert_dtype=True) -> "HDBSCAN":
             """
             Fit HDBSCAN model from features.
             """
@@ -829,6 +830,7 @@ class HDBSCAN(Base, ClusterMixin, CMajorInputTagMixin):
                             <int> n_rows,
                             <int> n_cols,
                             <int> n_cols2,
+                            alpha,
                             <DistanceType> metric,
                             params,
                             deref(linkage_output))

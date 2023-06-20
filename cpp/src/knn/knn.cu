@@ -36,7 +36,7 @@
 namespace ML {
 
 
-void brute_force_knn_GF(const raft::handle_t& handle,
+void brute_force_knn_GF(                     float alpha,const raft::handle_t& handle,
                      std::vector<float*>& input1,
                      std::vector<float*>& input2,
                      std::vector<int>& sizes,
@@ -56,7 +56,7 @@ void brute_force_knn_GF(const raft::handle_t& handle,
   ASSERT(input1.size() == sizes.size(), "input and sizes vectors must be the same size");
   ASSERT(input2.size() == sizes.size(), "input and sizes vectors must be the same size");
 
-  raft::spatial::knn::brute_force_knn_GF<int64_t, float, int>(handle,
+  raft::spatial::knn::brute_force_knn_GF<int64_t, float, int>(alpha,handle,
                                                            input1,
                                                            input2,
                                                            sizes,

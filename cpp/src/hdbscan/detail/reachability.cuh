@@ -176,6 +176,7 @@ void compute_knn_GF(const raft::handle_t& handle,
                  size_t m,
                  size_t n1,
                 size_t n2,
+                float alpha,
                  const value_t* search_items1,
                  const value_t* search_items2,
                  size_t n_search_items,
@@ -277,64 +278,46 @@ void compute_knn_GF(const raft::handle_t& handle,
 
     }
   }
-        std::cout << "here11"   << std::endl;
 
   CHECK_CUDA_ERROR(cudaSetDevice(sentinel_device));
-      std::cout << "here12" << std::endl;
 
   rmm::device_uvector<int64_t> int64_indices(k * n_search_items, stream);
-      std::cout << "here13"   << std::endl;
 
 
   #pragma omp parallel for num_threads(num_devices)
   for (int i = 0; i < num_devices; i++) {
-          std::cout << "here14"<< std::endl;
 
 
     std::vector<value_t*> inputs1 = inputs1_vec[i];
     std::vector<value_t*> inputs2 = inputs2_vec[i];
-          std::cout << "here16"  << i << std::endl;
 
     CHECK_CUDA_ERROR(cudaSetDevice(i));
-          std::cout << "here15"  << i << std::endl;
 
 
 
     // devide such that devices equal work as posible + last device has leftover.
     size_t num_search_items_me = i == (num_devices - 1)? (n_search_items/num_devices) + (n_search_items%num_devices) :  (n_search_items/num_devices);
     size_t start_pos_idx = (n_search_items/num_devices)*i;
-      std::cout << "here17.5   "  << i << std::endl;
-      std::cout << "here17.6 " << per_device_x1.size () << " " <<  i   << std::endl;
-      std::cout << "here17.7 " << per_device_x2.size() << " "<<  i    << std::endl;
-
     value_t* search_items_x1_local = per_device_x1[i] + n1*start_pos_idx;
     value_t* search_items_x2_local = per_device_x2[i] + n2*start_pos_idx;
-      std::cout << "here17"  << i << std::endl;
 
     if (i!= sentinel_device ) {
-            std::cout << "here18"  << i << std::endl;
 
-          auto h = raft::handle_t(rmm::cuda_stream_per_thread, std::make_shared<rmm::cuda_stream_pool>());    
-          rmm::device_uvector<int64_t> int64_indices_me(k * num_search_items_me, h.get_stream());
-          rmm::device_uvector<value_t> dists_me(k * num_search_items_me, h.get_stream());
-          brute_force_knn_GF(h, inputs1, inputs2, sizes, n1,n2, search_items_x1_local, search_items_x2_local, num_search_items_me, int64_indices_me.data(), dists_me.data(), k, true, true, metric);
-      std::cout<< "here 29 "<< std::endl;
+        auto h = raft::handle_t(rmm::cuda_stream_per_thread, std::make_shared<rmm::cuda_stream_pool>());    
+        rmm::device_uvector<int64_t> int64_indices_me(k * num_search_items_me, h.get_stream());
+        rmm::device_uvector<value_t> dists_me(k * num_search_items_me, h.get_stream());
+        brute_force_knn_GF(alpha, h, inputs1, inputs2, sizes, n1,n2, search_items_x1_local, search_items_x2_local, num_search_items_me, int64_indices_me.data(), dists_me.data(), k, true, true, metric);
 
-          CHECK_CUDA_ERROR(cudaMemcpy(dists + start_pos_idx*k, dists_me.data(), num_search_items_me*k*sizeof(value_t) ,cudaMemcpyDeviceToDevice));
-                std::cout<< "here21 "<< std::endl;
+        CHECK_CUDA_ERROR(cudaMemcpy(dists + start_pos_idx*k, dists_me.data(), num_search_items_me*k*sizeof(value_t) ,cudaMemcpyDeviceToDevice));
 
-          CHECK_CUDA_ERROR(cudaMemcpy(int64_indices.data() + start_pos_idx*k, int64_indices_me.data(), num_search_items_me*k*sizeof(int64_t) ,cudaMemcpyDeviceToDevice));
-                std::cout<< "here22  "<< std::endl;
+        CHECK_CUDA_ERROR(cudaMemcpy(int64_indices.data() + start_pos_idx*k, int64_indices_me.data(), num_search_items_me*k*sizeof(int64_t) ,cudaMemcpyDeviceToDevice));
 
-          CHECK_CUDA_ERROR(cudaFree(per_device_x1[i]));
-                std::cout<< "here 23 "<< std::endl;
+        CHECK_CUDA_ERROR(cudaFree(per_device_x1[i]));
 
-          
-          CHECK_CUDA_ERROR(cudaFree(per_device_x2[i]));
+        
+        CHECK_CUDA_ERROR(cudaFree(per_device_x2[i]));
     } else {
-      std::cout<< "here20 "<< std::endl;
-      brute_force_knn_GF(handle, inputs1, inputs2, sizes, n1,n2, search_items_x1_local, search_items_x2_local, num_search_items_me, int64_indices.data() +start_pos_idx*k, dists + start_pos_idx*k, k, true, true, metric);
-            std::cout<< "here 19"<< std::endl;
+      brute_force_knn_GF(alpha, handle, inputs1, inputs2, sizes, n1,n2, search_items_x1_local, search_items_x2_local, num_search_items_me, int64_indices.data() +start_pos_idx*k, dists + start_pos_idx*k, k, true, true, metric);
 
     }
   }
@@ -483,6 +466,7 @@ void mutual_reachability_graph_GF(const raft::handle_t& handle,
                                size_t m,
                                size_t n1,
                                size_t n2,
+                               float alpha2,
                                raft::distance::DistanceType metric,
                                int min_samples,
                                value_t alpha,
@@ -504,7 +488,7 @@ void mutual_reachability_graph_GF(const raft::handle_t& handle,
   auto start = std::chrono::high_resolution_clock::now();
 
   // perform knn
-  compute_knn_GF(handle, X1,X2, inds.data(), dists.data(), m, n1,n2, X1,X2, m, min_samples, metric);
+  compute_knn_GF(handle, X1,X2, inds.data(), dists.data(), m, n1,n2, alpha2, X1,X2, m, min_samples, metric);
   auto stop = std::chrono::high_resolution_clock::now();
 
 

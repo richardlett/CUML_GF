@@ -23,8 +23,11 @@
 #include <raft/cuda_utils.cuh>
 
 #include "runner.h"
+#include <stdio.h>
 
 namespace ML {
+
+
 
 void hdbscan(const raft::handle_t& handle,
              const float* X,
@@ -40,7 +43,6 @@ void hdbscan(const raft::handle_t& handle,
   HDBSCAN::_fit_hdbscan(
     handle, X, m, n, metric, params, labels.data(), label_map.data(), core_dists.data(), out);
 }
-#include <stdio.h>
 
 void hdbscan_GF(const raft::handle_t& handle,
              const float* X1,
@@ -48,6 +50,7 @@ void hdbscan_GF(const raft::handle_t& handle,
              size_t m,
              size_t n1,
               size_t n2,
+              float alpha,
              raft::distance::DistanceType metric,
              HDBSCAN::Common::HDBSCANParams& params,
              HDBSCAN::Common::hdbscan_output<int, float>& out)
@@ -57,7 +60,7 @@ void hdbscan_GF(const raft::handle_t& handle,
   rmm::device_uvector<float> core_dists(m, handle.get_stream());
   std::cout << "n1 " << n1 << " n2:" << n2 << std::endl;
   HDBSCAN::_fit_hdbscan_GF(
-    handle, X1, X2, m, n1, n2, metric, params, labels.data(), label_map.data(), core_dists.data(), out);
+    handle, X1, X2, m, n1, n2, alpha, metric, params, labels.data(), label_map.data(), core_dists.data(), out);
 }
 
 void hdbscan(const raft::handle_t& handle,

@@ -216,6 +216,7 @@ void build_linkage_GF(const raft::handle_t& handle,
                    size_t m,
                    size_t n1,
                    size_t n2,
+                   float alpha,
                    raft::distance::DistanceType metric,
                    Common::HDBSCANParams& params,
                    value_t* core_dists,
@@ -239,6 +240,7 @@ void build_linkage_GF(const raft::handle_t& handle,
                                                   (size_t)m,
                                                   (size_t)n1,
                                                   (size_t)n2,
+                                                  (float) alpha,
                                                   metric,
                                                   params.min_samples + 1,
                                                   params.alpha,
@@ -262,6 +264,7 @@ void build_linkage_GF(const raft::handle_t& handle,
                                           m,
                                           n1,
                                           n2,
+                                          alpha,
                                           out.get_mst_src(),
                                           out.get_mst_dst(),
                                           out.get_mst_weights(),
@@ -293,6 +296,7 @@ void _fit_hdbscan_GF(const raft::handle_t& handle,
                   size_t m,
                   size_t n1,
                   size_t n2,
+                  float alpha,
                   raft::distance::DistanceType metric,
                   Common::HDBSCANParams& params,
                   value_idx* labels,
@@ -305,7 +309,7 @@ void _fit_hdbscan_GF(const raft::handle_t& handle,
 
   int min_cluster_size = params.min_cluster_size;
 
-  build_linkage_GF(handle, X1, X2, m, n1, n2, metric, params, core_dists, out);
+  build_linkage_GF(handle, X1, X2, m, n1, n2, alpha, metric, params, core_dists, out);
 
   /**
    * Condense branches of tree according to min cluster size
